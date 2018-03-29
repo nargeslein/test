@@ -1,0 +1,1 @@
+predict(modelrf, newdata=testingData[,1:159])

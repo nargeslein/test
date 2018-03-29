@@ -1,0 +1,104 @@
+---
+title: "Practical Maschine Learning - Course Project"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Goal
+The course project is part of the coursera module "Practical Maschine Learning". 
+The idea is to apply the course content to a real-world problem. The data of 5 different personal activity of 6 participants needs to analyzed for this project. The data is collected using accelerometers on the belt, forearm, arm and dumbell. 
+The goal of the project is to build (and explain) a model which predicts the activity. 
+
+More information on the data and the initial project can be found here <http://groupware.les.inf.puc-rio.br/har> 
+
+## Analysis
+# Data
+Two sets of data are provided: testing and training. The final prediction should be run on the testing data. While the testing data should never be explored when building a model, it is still necessary to see which columns are not populated as these cannot be used on the prediction and need to be removed when building the model. The first step is to identify the empty columns in the test set from the training set
+
+Furthermore the first seven columns can also be disregarded when building the model as they are no measurements are meta-data on the measurement,e.g. how/when and who the measurement has been taken
+We construct the testing and training sets as follows:
+
+```{r}
+#remove existing variables
+rm(list = ls())
+
+#load libraries
+library(caret)
+library(mlbench)
+library(parallel)
+library(doParallel)
+library(lubridate)
+library(dplyr)
+
+#create cluster for parallel processing
+cluster <- makeCluster(detectCores() - 1) # convention to leave 1 core for OS
+registerDoParallel(cluster)
+
+#change training control in order to allow parallel processing
+fitControl <- trainControl(method = "cv",
+                           number = 5,
+                           allowParallel = TRUE)
+
+
+trainingURL <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testingURL <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+trainingfile <- "pml-training.csv"
+testingfile <- "pml-testing.csv"
+
+if(!file.exists(trainingfile))
+  download.file(trainingURL, destfile = file.path(getwd(),trainingfile))
+
+if(!file.exists(testingfile))
+  download.file(testingURL, destfile = file.path(getwd(),testingfile))
+
+
+trainingData <- read.csv(trainingfile)
+testingData <- read.csv(testingfile)
+#remove first 7 columns
+testing <- testingData[,-(1:7)]
+training <- trainingData[,-(1:7)]
+
+#remove NA colums from testing and training
+colNA <- colSums(is.na(testing)) == nrow(testing)
+colNamesNA <- colnames(testing[,names(which(colNA))])
+testing <- testing[,!names(testing) %in% colNamesNA]
+training <- training[,!names(training) %in% colNamesNA]
+```
+
+We will divide the training set into a training and a validation set in order to check the accuracy of the model before applying it to the test set.
+````{r}
+#split the training data into a training and a validation set
+inTrain <- createDataPartition(y=training$classe, p=0.7, list=FALSE)
+
+training <- training[inTrain,]
+validation <- training[-inTrain,]
+````
+
+# Model
+The prediction is a classification problem which can be assessed using a random forest model with parallel processing in order to reduce the execution speed
+````{r}
+fitControl <- trainControl(method = "cv",
+                           number = 5,
+                           allowParallel = TRUE)
+modelrf <- train(classe~., method="rf", data=training, trControl=fitControl)
+
+````
+
+# Accuracy
+We test the accuracy on the validation set and the result is 100%! This is why we do not examine if another model could be used 
+````{r}
+validation_pred <- predict(modelrf, validation)
+print(confusionMatrix(validation$classe,validation_pred))
+````
+
+#Prediction
+The prediction on the test set is done by removing the last column called "problem_id" which is not a predictor but only indicating the test set.
+````{r}
+test_pred <- predict(modelrf, testing[,-60])
+print(data.frame(test_pred))
+````
+
