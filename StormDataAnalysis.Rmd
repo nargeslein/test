@@ -1,0 +1,42 @@
+---
+title: "Storm Data Analysis"
+author: "Narges"
+date: "April 20, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+##Storm Data Anaylsis
+This document describes the analysis of the storm data and has been produced as part course project of the coursera course "Reproducible Research". 
+
+##Synopsis
+
+##Data Processing
+First we load the data from the link indicated in the assigment instructions.
+```{r download, cache=true}
+download.file("https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2",destfile= "storm_data.csv.bz2")
+```
+
+The next step is to load the csv file 
+```{r download, cache=true}
+storm_data <- read.csv("storm_data.csv.bz2")
+
+
+
+```
+
+ storm_data_cleaned <- storm_data
+ storm_data_cleaned$EVTYPE <- toupper(storm_data_cleaned$EVTYPE)
+ storm_data_cleaned$EVTYPE <- gsub("/", " ", storm_data_cleaned$EVTYPE)
+ storm_data_cleaned$EVTYPE <- gsub("  ", " ", storm_data_cleaned$EVTYPE)
+ 
+ length(unique((storm_data$EVTYPE)))
+ length(unique((storm_data_cleaned$EVTYPE)))
+ 
+ storm_data_health <- storm_data_cleaned[storm_data_cleaned$FATALITIES>0 | storm_data_cleaned$INJURIES>0, ]
+ injuries <- aggregate(INJURIES~EVTYPE, storm_data_health, sum)
+ fatalities <- aggregate(FATALITIES~EVTYPE, storm_data_health, sum)
+ both <- aggregate(FATALITIES+INJURIES~EVTYPE, storm_data_health, sum)
