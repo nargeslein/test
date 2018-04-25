@@ -5,38 +5,178 @@ date: "April 20, 2018"
 output: html_document
 ---
 
-```{r setup, include=FALSE}
+```{r setup, include=FALSE, warning=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-##Storm Data Anaylsis
-This document describes the analysis of the storm data and has been produced as part course project of the coursera course "Reproducible Research". 
-
 ##Synopsis
+This document describes the analysis of the storm data for the course project of the coursera class "Reproducible Research" which is part of the Data Science Specialization. The database covers events between 1950 and 2011
+
+I have addressed the following questions:
+1. Across the United States, which types of events are most harmful with respect to population health?
+
+2. Across the United States, which types of events have the greatest economic consequences?
+
+I have identfied the most significant events for both questions and they form the majority of the events, therfore the approach is valid.
+
+The variables used are as indicated in the assigment and the documentation. They contain typos and unknown value but I did not attempted to clean or correct the data issues because the most harmful events could clearly be identified. 
+
+
+##Storm Data Anaylsis
+We will use the variable EVTYPE as indicated in the assigment to identify the five most harmful events for both questions.
+
+There is also some documentation of the storm database available.
+
+National Weather Service [Storm Data Documentation](https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2Fpd01016005curr.pdf)
+National Climatic Data Center Storm Events [FAQ](https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2FNCDC%20Storm%20Events-FAQ%20Page.pdf)
+
+Our first code chunk loads all required libraries
+```{r lib, message=FALSE, warning=FALSE, results="hide"}
+library(dplyr)
+library(data.table)
+library(ggplot2)
+```
+
+
 
 ##Data Processing
 First we load the data from the link indicated in the assigment instructions.
-```{r download, cache=true}
-download.file("https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2",destfile= "storm_data.csv.bz2")
+```{r download, cache=TRUE}
+if(!file.exists("storm_data.csv.bz2"))
+  download.file("https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2",destfile= "storm_data.csv.bz2")
 ```
 
-The next step is to load the csv file 
-```{r download, cache=true}
+The next step is to load the csv file
+```{r load, cache=TRUE}
 storm_data <- read.csv("storm_data.csv.bz2")
+```
 
+##Results
+###Most harmful events to population health
+We will now address the first question:
+Across the United States, which types of events are most harmful with respect to population health?
 
+For this purpose we will filter all events where people have died or been injured, this is done by looking at the variable "INJURIES" and "FATALITIES"
+```{r filter1, warning=FALSE}
+storm_data_health <- storm_data %>% filter(FATALITIES>0 | storm_data$INJURIES>0)
+```
+
+Now we sum up the number of injured and killed people for each event type, we also determine the percentage
+```{r aggregate1}
+injuries <- aggregate(INJURIES~EVTYPE, storm_data_health, sum)
+fatalities <- aggregate(FATALITIES~EVTYPE, storm_data_health, sum)
+setnames(fatalities, old="FATALITIES", new="Number")
+setnames(injuries, old="INJURIES", new="Number")
+injuries$PCT <- injuries$Number / sum(injuries$Number)
+fatalities$PCT <- fatalities$Number / sum(fatalities$Number)
 
 ```
 
- storm_data_cleaned <- storm_data
- storm_data_cleaned$EVTYPE <- toupper(storm_data_cleaned$EVTYPE)
- storm_data_cleaned$EVTYPE <- gsub("/", " ", storm_data_cleaned$EVTYPE)
- storm_data_cleaned$EVTYPE <- gsub("  ", " ", storm_data_cleaned$EVTYPE)
- 
- length(unique((storm_data$EVTYPE)))
- length(unique((storm_data_cleaned$EVTYPE)))
- 
- storm_data_health <- storm_data_cleaned[storm_data_cleaned$FATALITIES>0 | storm_data_cleaned$INJURIES>0, ]
- injuries <- aggregate(INJURIES~EVTYPE, storm_data_health, sum)
- fatalities <- aggregate(FATALITIES~EVTYPE, storm_data_health, sum)
- both <- aggregate(FATALITIES+INJURIES~EVTYPE, storm_data_health, sum)
+The next step is to idenfity the five most damaging events leading to injuries and fatalties respectively and plot them
+```{r plot1}
+top = 5
+Top5Fatalities <- top_n(fatalities, n=top, Number)
+Top5Injuries <- top_n(injuries, n=top, Number)
+Top5Fatalities$category <- "INJURIES"
+Top5Injuries$category <- "FATALITIES"
+InjAndFat <- rbind(Top5Fatalities, Top5Injuries)
+
+
+g1 <- ggplot(InjAndFat, aes(EVTYPE, Number)) 
+g1 + geom_col()+ theme(axis.text.x = element_text(angle=60, hjust=1))+ labs(x="Event") + labs(y="Number of people") + facet_wrap(~category)+  ggtitle("Most significant events damaging health")+theme(plot.title = element_text(hjust = 0.5))
+```
+
+The proportion of the most significant events is as follows and therefore we have identified them
+```{r proportion1}
+sum(Top5Fatalities$PCT)
+sum(Top5Injuries$PCT)
+```
+Events are:
+```{r events1}
+unique(c(as.character(Top5Fatalities$EVTYPE), as.character(Top5Injuries$EVTYPE)))
+```
+
+
+
+###Most harmful events to economy
+We will now address the second question:
+Across the United States, which types of events have the greatest economic consequences?
+
+For this purpose we will filter all events with property or crop damage by looking at the variables "PROPDMG" and "CROPDMG"
+```{r filter2}
+storm_data_prop <- storm_data %>% filter(PROPDMG>0)
+storm_data_crop <- storm_data %>% filter(CROPDMG>0)
+```
+
+The variables "PROPDMGEXP" and "CROPDMPEXP" contain the the exponential value in order to get the dollar amount. 
+We will look at their values. 
+```{r exp}
+table(storm_data_prop$PROPDMGEXP)
+table(storm_data_crop$CROPDMGEXP)
+```
+
+The documentation provides explanation for the following values:
+
+*   K,k: thousands
+*   M,m: millions
+*   B,b: billions
+
+We are going to exclude all events with a different exponent value to the above by setting the multiplier to 0
+```{r amount}
+multiplier <- function(x) {y<- toupper(x) 
+                case_when(         y == "K" ~ 1000,
+                                   y == "M"~ 1000000,
+                                   y == "B"~ 1000000000, 
+                                  TRUE ~ 0)}
+
+storm_data_prop$DMG <- storm_data_prop$PROPDMG * multiplier(as.character(storm_data_prop$PROPDMGEXP))
+storm_data_crop$DMG <- storm_data_crop$CROPDMG * multiplier(as.character(storm_data_crop$CROPDMGEXP))
+
+```   
+
+We have identified the following proportion of events thus ignoring other exponents is valid
+```{r expCheck}
+count(storm_data_prop[storm_data_prop$PROPDMGEXP %in% c("k","K","m","M","b","B"),])/
+count(storm_data_prop)  
+
+count(storm_data_crop[storm_data_crop$CROPDMGEXP %in% c("k","K","m","M","b","B"),])/
+count(storm_data_crop)  
+```
+
+
+Now we sum up the amount of property and crop damage for each event type, we also determine the percentage
+```{r aggregate2}
+property_DMG <- aggregate(DMG~EVTYPE, storm_data_prop, sum)
+crop_DMG <- aggregate(DMG~EVTYPE, storm_data_crop, sum)
+
+property_DMG$PCT <- property_DMG$DMG / sum(property_DMG$DMG)
+crop_DMG$PCT <- crop_DMG$DMG / sum(crop_DMG$DMG)
+
+```
+
+The next step is to idenfity the 5 most damaging events leading to property and crop damage respectively and plot them
+```{r plot}
+top = 5
+Top5Property <- top_n(property_DMG, n=top, DMG)
+Top5Crop <- top_n(crop_DMG, n=top, DMG)
+Top5Property$category <- "PROPERTY"
+Top5Crop$category <- "CROP"
+PropAndCrop <- rbind(Top5Property, Top5Crop)
+
+g1 <- ggplot(PropAndCrop, aes(EVTYPE, DMG)) 
+g1 + geom_col()+ theme(axis.text.x = element_text(angle=60, hjust=1))+ labs(x="Event") + labs(y="Damage (Dollar)") + ggtitle("Most significant events damaging economy")+theme(plot.title = element_text(hjust = 0.5))+ facet_wrap(~category)
+```
+
+The proportion of the most significant events is as follows and therefore we have identified them
+```{r proportion}
+sum(Top5Property$PCT)
+sum(Top5Crop$PCT)
+```
+Events are:
+```{r events2}
+unique(c(as.character(Top5Property$EVTYPE), as.character(Top5Crop$EVTYPE)))
+```
+
+
+
+
